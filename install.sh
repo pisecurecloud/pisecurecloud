@@ -282,8 +282,10 @@ echo -e "Quellordner gefunden: ${GREEN}$SRC_DIR${NC}"
 if [ -d "$SRC_DIR/.git" ]; then
   cd "$SRC_DIR" || exit 1
   if git remote | grep -q '.'; then
-    echo "Hole aktuelle Änderungen von Git (git pull)..."
-    git pull
+    echo "Hole aktuelle Änderungen von Git (git fetch & reset)..."
+    git fetch --all
+    BRANCH=$(git symbolic-ref --short -q HEAD || echo "main")
+    git reset --hard "origin/$BRANCH"
   fi
 fi
 
