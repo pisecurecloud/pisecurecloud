@@ -1,0 +1,6 @@
+node_modules/
+storage_dev/
+temp_uploads/
+config.dev.json
+.DS_Store
+*.log

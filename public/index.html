@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PiSecureCloud - Sicherer Cloud-Speicher</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Shared SVG Definitions for Icons -->
+  <svg style="display: none;">
+    <symbol id="icon-cloud-lock" viewBox="0 0 24 24">
+      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM12 17c-1.1 0-2-.9-2-2v-2c0-1.1.9-2 2-2s2 .9 2 2v2c0 1.1-.9 2-2 2zm1.2-4.2c0-.66-.54-1.2-1.2-1.2s-1.2.54-1.2 1.2v2.4c0 .66.54 1.2 1.2 1.2s1.2-.54 1.2-1.2v-2.4z"/>
+    </symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24">
+      <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+    </symbol>
+    <symbol id="icon-file" viewBox="0 0 24 24">
+      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+    </symbol>
+    <symbol id="icon-image" viewBox="0 0 24 24">
+      <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+    </symbol>
+    <symbol id="icon-video" viewBox="0 0 24 24">
+      <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
+    </symbol>
+    <symbol id="icon-audio" viewBox="0 0 24 24">
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+    </symbol>
+    <symbol id="icon-text" viewBox="0 0 24 24">
+      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+    </symbol>
+    <symbol id="icon-pdf" viewBox="0 0 24 24">
+      <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-2.5H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 8.5H10v1H9v-1zm5 1.5h1v1h-1v-1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/>
+    </symbol>
+    <symbol id="icon-delete" viewBox="0 0 24 24">
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24">
+      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+    </symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24">
+      <path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5c-1.11 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24">
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+    </symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24">
+      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+    </symbol>
+    <symbol id="icon-power" viewBox="0 0 24 24">
+      <path d="M16.56 5.44L15.11 6.89C16.84 8.27 18 10.01 18 12c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-1.99 1.16-3.73 2.89-5.11L7.44 5.44C5.12 7.29 4 9.47 4 12c0 4.42 3.58 8 8 8s8-3.58 8-8c0-2.53-1.12-4.71-3.44-6.56zM11 3h2v10h-2V3z"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+      <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+    </symbol>
+    <symbol id="icon-users" viewBox="0 0 24 24">
+      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 5.64 5 7.25 5 8.86 6.34 10.2 8 10.2M8 13c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    </symbol>
+    <symbol id="icon-share" viewBox="0 0 24 24">
+      <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
+    </symbol>
+  </svg>
+
+  <div class="app-container">
+    
+    <!-- 1. SETUP SCREEN -->
+    <div id="setup-screen" class="auth-card glass-card" style="display: none;">
+      <div class="logo-container">
+        <svg><use href="#icon-cloud-lock"></use></svg>
+      </div>
+      <h1>PiSecureCloud</h1>
+      <h2>Ersteinrichtung (Admin-Konto)</h2>
+      <p class="subtitle">Erstelle das primäre Administrator-Konto. Dieses Passwort wird für deine verschlüsselte Dateiablage verwendet.</p>
+      
+      <form id="setup-form" onsubmit="handleSetup(event)">
+        <div class="form-group">
+          <label for="setup-username">Admin-Benutzername</label>
+          <input type="text" id="setup-username" class="form-control" placeholder="z. B. admin" required>
+        </div>
+        <div class="form-group">
+          <label for="setup-password">Admin-Passwort (Verschlüsselungsschlüssel)</label>
+          <input type="password" id="setup-password" class="form-control" placeholder="Mindestens 8 Zeichen" required minlength="8">
+        </div>
+        <div class="form-group">
+          <label for="setup-password-confirm">Passwort bestätigen</label>
+          <input type="password" id="setup-password-confirm" class="form-control" placeholder="Passwort erneut eingeben" required>
+        </div>
+        <div class="form-group">
+          <label for="setup-storage-dir">Speicherpfad (Externe Festplatte)</label>
+          <input type="text" id="setup-storage-dir" class="form-control" value="/mnt/pisecurecloud" required>
+        </div>
+        <button type="submit" class="btn-primary">
+          <svg style="width:20px; height:20px; fill:#fff;"><use href="#icon-plus"></use></svg>
+          Einrichtung abschließen
+        </button>
+      </form>
+    </div>
+
+    <!-- 2. LOGIN SCREEN -->
+    <div id="login-screen" class="auth-card glass-card" style="display: none;">
+      <div class="logo-container">
+        <svg><use href="#icon-cloud-lock"></use></svg>
+      </div>
+      <h1>PiSecureCloud</h1>
+      <h2>Anmelden</h2>
+      <p class="subtitle">Logge dich in deinen privaten, verschlüsselten Bereich ein.</p>
+      
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-username">Benutzername</label>
+          <input type="text" id="login-username" class="form-control" placeholder="Benutzername eingeben" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Passwort / Entschlüsselungsschlüssel</label>
+          <input type="password" id="login-password" class="form-control" placeholder="Passwort eingeben" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-primary" style="margin-bottom: 16px;">
+          Entschlüsseln & Anmelden
+        </button>
+      </form>
+      <div class="switch-auth-mode">
+        <span>Noch kein Konto? <a href="#" onclick="showRegisterScreen(event)">Registrieren</a></span>
+      </div>
+    </div>
+
+    <!-- 3. REGISTRATION SCREEN -->
+    <div id="register-screen" class="auth-card glass-card" style="display: none;">
+      <div class="logo-container">
+        <svg><use href="#icon-cloud-lock"></use></svg>
+      </div>
+      <h1>PiSecureCloud</h1>
+      <h2>Konto erstellen</h2>
+      <p class="subtitle">Erstelle ein neues Benutzerkonto. Deine Daten werden vollständig mit deinem Passwort verschlüsselt.</p>
+      
+      <form id="register-form" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="register-username">Gewünschter Benutzername</label>
+          <input type="text" id="register-username" class="form-control" placeholder="z. B. max_mustermann" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="register-password">Dein Passwort (Verschlüsselungsschlüssel)</label>
+          <input type="password" id="register-password" class="form-control" placeholder="Mindestens 8 Zeichen" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="register-password-confirm">Passwort bestätigen</label>
+          <input type="password" id="register-password-confirm" class="form-control" placeholder="Passwort erneut eingeben" required autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn-primary" style="margin-bottom: 16px;">
+          Konto erstellen
+        </button>
+      </form>
+      <div class="switch-auth-mode">
+        <span>Bereits registriert? <a href="#" onclick="showLoginScreen(event)">Zum Login</a></span>
+      </div>
+    </div>
+
+    <!-- 4. OFFLINE / WARTUNGSMODUS SCREEN -->
+    <div id="offline-screen" class="auth-card glass-card" style="display: none; border-color: rgba(239, 68, 68, 0.45);">
+      <div class="logo-container" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3);">
+        <svg><use href="#icon-power"></use></svg>
+      </div>
+      <h1 style="background: linear-gradient(135deg, #ef4444 0%, #f43f5e 100%); -webkit-background-clip: text;">Cloud offline</h1>
+      <h2>Wartungsmodus aktiv</h2>
+      <p class="subtitle">Das Cloud-System wurde offline geschaltet. Ein Dateizugriff ist derzeit nicht möglich.</p>
+      
+      <div class="shutdown-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-glass);">
+        <h3 style="font-size: 15px; margin-bottom: 16px; color: var(--text-main);">Raspberry Pi sicher herunterfahren</h3>
+        <p class="subtitle" style="font-size:12px; margin-bottom:16px;">Nur für Administratoren. Schaltet den Mini-Computer ab, um die Festplatte sicher trennen zu können.</p>
+        
+        <form id="shutdown-form" onsubmit="handleShutdown(event)">
+          <div class="form-group">
+            <input type="text" id="shutdown-username" class="form-control" placeholder="Admin-Benutzername" required style="margin-bottom: 8px;">
+            <input type="password" id="shutdown-password" class="form-control" placeholder="Admin-Passwort" required>
+          </div>
+          <button type="submit" class="btn-primary" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);">
+            <svg style="width:16px; height:16px; fill:#fff; margin-right:4px;"><use href="#icon-power"></use></svg>
+            Raspberry Pi ausschalten
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 5. DASHBOARD -->
+    <div id="dashboard" class="dashboard-container glass-card">
+      <div class="dash-header">
+        <div class="brand">
+          <div class="logo-small">
+            <svg><use href="#icon-cloud-lock"></use></svg>
+          </div>
+          <div>
+            <h2>PiSecureCloud</h2>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top:2px;">
+              Angemeldet als: <span id="username-display" style="color: var(--accent-secondary); font-weight:600;">...</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Navigation Tabs -->
+        <div class="tab-navigation">
+          <button id="tab-files-btn" class="tab-btn active" onclick="switchTab('files')">
+            <svg class="tab-icon"><use href="#icon-folder"></use></svg>
+            Dateien
+          </button>
+          <button id="tab-shares-btn" class="tab-btn" onclick="switchTab('shares')">
+            <svg class="tab-icon"><use href="#icon-share"></use></svg>
+            Freigaben
+          </button>
+          <button id="tab-settings-btn" class="tab-btn" onclick="switchTab('settings')">
+            <svg class="tab-icon"><use href="#icon-settings"></use></svg>
+            Passwort ändern
+          </button>
+          <button id="tab-admin-btn" class="tab-btn" onclick="switchTab('admin')" style="display: none;">
+            <svg class="tab-icon"><use href="#icon-users"></use></svg>
+            Benutzerverwaltung
+          </button>
+        </div>
+
+        <div class="header-right">
+          <div class="disk-info">
+            <span id="disk-text">Speicherplatz: Lade...</span>
+            <div class="disk-progress-bar">
+              <div id="disk-progress" class="disk-progress-fill"></div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="handleLogout()">
+            <svg style="width:16px; height:16px; fill:currentColor;"><use href="#icon-logout"></use></svg>
+            Abmelden
+          </button>
+        </div>
+      </div>
+
+      <div class="dash-body">
+        
+        <!-- Tab 1: Dateien-Manager -->
+        <div id="section-files" class="tab-section active">
+          <!-- Path / Navigation toolbar -->
+          <div class="path-container">
+            <ul id="breadcrumbs" class="breadcrumbs">
+              <!-- Rendered by JS -->
+            </ul>
+          </div>
+
+          <!-- Actions -->
+          <div class="toolbar">
+            <div class="actions-left">
+              <button class="btn-action btn-action-primary" onclick="triggerFileUpload()">
+                <svg style="width:18px; height:18px; fill:currentColor;"><use href="#icon-upload"></use></svg>
+                Datei hochladen
+              </button>
+              <button class="btn-action" onclick="openNewFolderDialog()">
+                <svg style="width:18px; height:18px; fill:currentColor;"><use href="#icon-folder"></use></svg>
+                Neuer Ordner
+              </button>
+              <input type="file" id="file-input" style="display: none;" multiple onchange="handleFileSelect(event)">
+            </div>
+          </div>
+
+          <!-- Files grid -->
+          <div id="file-grid" class="file-grid" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Freigaben-Verwaltung (Neu) -->
+        <div id="section-shares" class="tab-section">
+          <div style="padding: 20px 0;">
+            <h2 style="margin-bottom: 8px;">Aktive Freigaben</h2>
+            <p class="subtitle" style="margin-bottom: 24px;">Hier siehst du alle von dir erstellten öffentlichen Links. Du kannst sie kopieren oder die Freigabe vorzeitig löschen.</p>
+            
+            <div class="table-container">
+              <table class="user-table">
+                <thead>
+                  <tr>
+                    <th>Dateiname</th>
+                    <th>Ablaufdatum</th>
+                    <th>Link kopieren</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody id="shares-table-body">
+                  <!-- Rendered dynamically by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Passwort ändern Formular -->
+        <div id="section-settings" class="tab-section">
+          <div style="max-width: 500px; margin: 0 auto; padding: 20px 0;">
+            <h2 style="margin-bottom: 8px;">Passwort ändern</h2>
+            <p class="subtitle" style="margin-bottom: 24px;">Ändere dein Passwort. Deine Dateien werden im Hintergrund automatisch für dein neues Passwort umverschlüsselt.</p>
+            
+            <form id="change-password-form" onsubmit="handleChangePassword(event)">
+              <div class="form-group">
+                <label for="change-old-password">Aktuelles Passwort</label>
+                <input type="password" id="change-old-password" class="form-control" placeholder="Dein aktuelles Passwort" required>
+              </div>
+              <div class="form-group">
+                <label for="change-new-password">Neues Passwort</label>
+                <input type="password" id="change-new-password" class="form-control" placeholder="Mindestens 8 Zeichen" required minlength="8">
+              </div>
+              <div class="form-group">
+                <label for="change-new-password-confirm">Neues Passwort bestätigen</label>
+                <input type="password" id="change-new-password-confirm" class="form-control" placeholder="Neues Passwort erneut eingeben" required>
+              </div>
+              <button type="submit" id="change-pwd-btn" class="btn-primary">
+                Passwort ändern & Dateien neu verschlüsseln
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Tab 4: Benutzerverwaltung für Admins -->
+        <div id="section-admin" class="tab-section">
+          <div style="padding: 20px 0;">
+            <h2 style="margin-bottom: 8px;">Benutzerverwaltung</h2>
+            <p class="subtitle" style="margin-bottom: 24px;">Verwalte alle registrierten Accounts. Löscht du einen Account, werden auch alle seine verschlüsselten Dateien physisch von der Festplatte gelöscht.</p>
+            
+            <div class="table-container">
+              <table class="user-table">
+                <thead>
+                  <tr>
+                    <th>Benutzername</th>
+                    <th>Rolle</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody id="user-table-body">
+                  <!-- Rendered dynamically by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FLOATING UPLOAD PROGRESS PANEL -->
+  <div id="upload-panel" class="upload-panel glass-card">
+    <div class="upload-panel-header">
+      <span>Uploads</span>
+      <span id="upload-panel-count">0 Dateien</span>
+    </div>
+    <div id="upload-list">
+      <!-- Upload items rendered here -->
+    </div>
+  </div>
+
+  <!-- NEW FOLDER DIALOG -->
+  <div id="folder-dialog" class="dialog-overlay">
+    <div class="dialog-content glass-card">
+      <h2>Neuen Ordner erstellen</h2>
+      <div class="form-group">
+        <label for="folder-name-input">Ordnername</label>
+        <input type="text" id="folder-name-input" class="form-control" placeholder="Name des Ordners" required>
+      </div>
+      <div class="dialog-buttons">
+        <button class="btn-secondary" onclick="closeNewFolderDialog()">Abbrechen</button>
+        <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="createNewFolder()">Erstellen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TEILEN / SHARE DIALOG (Neu) -->
+  <div id="share-dialog" class="dialog-overlay">
+    <div class="dialog-content glass-card" style="max-width: 450px;">
+      <h2>Datei teilen / freigeben</h2>
+      <p class="subtitle" id="share-dialog-filename" style="margin-bottom: 20px; word-break: break-all;">Dateiname...</p>
+      
+      <div id="share-setup-view">
+        <div class="form-group">
+          <label for="share-duration-input">Gültigkeitsdauer des Links</label>
+          <select id="share-duration-input" class="form-control" style="background: var(--bg-secondary); cursor: pointer;">
+            <option value="1d">1 Tag (24 Stunden)</option>
+            <option value="7d">7 Tage</option>
+            <option value="permanent">Dauerhaft (Bis zum Löschen)</option>
+          </select>
+        </div>
+        <div class="dialog-buttons" style="margin-top: 24px;">
+          <button class="btn-secondary" onclick="closeShareDialog()">Abbrechen</button>
+          <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="createFileShare()">Link erstellen</button>
+        </div>
+      </div>
+      
+      <div id="share-result-view" style="display: none;">
+        <div class="form-group">
+          <label>Öffentlicher Link (mit Verschlüsselungsschlüssel)</label>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <input type="text" id="share-url-output" class="form-control" readonly style="font-size: 13px;">
+            <button class="btn-primary" style="width: auto; padding: 10px 16px; white-space:nowrap;" onclick="copyShareUrl()">Kopieren</button>
+          </div>
+          <p class="subtitle" style="font-size: 11px; margin-top: 8px; color: #f59e0b;">
+            ⚠️ Wichtig: Dieser Link enthält am Ende (nach dem #) den Sicherheitsschlüssel zum Entschlüsseln der Datei. Teile ihn nur mit Personen, denen du vertraust!
+          </p>
+        </div>
+        <div class="dialog-buttons" style="margin-top: 24px;">
+          <button class="btn-primary" style="width: 100%;" onclick="closeShareDialog()">Fertig</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div id="preview-modal" class="modal-overlay" onclick="closePreviewModal(event)">
+    <div class="modal-content glass-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span id="preview-filename" class="modal-title">Dateivorschau</span>
+        <div class="modal-actions">
+          <button id="preview-download-btn" class="btn-action" style="padding: 6px 12px; font-size:12px;">
+            <svg style="width:14px; height:14px; fill:currentColor; margin-right:4px;"><use href="#icon-download"></use></svg>
+            Herunterladen
+          </button>
+          <button class="modal-close" onclick="closePreviewModal(event)">&times;</button>
+        </div>
+      </div>
+      <div id="preview-body" class="modal-body">
+        <!-- Rendered by JS depending on type -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PiSecureCloud - Freigegebene Datei</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Specific styles for the public download card */
+    .download-card {
+      width: 100%;
+      max-width: 500px;
+      padding: 40px;
+      text-align: center;
+      animation: floatIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .file-icon-box {
+      width: 90px;
+      height: 90px;
+      border-radius: 28px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-glass);
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    
+    .file-icon-box svg {
+      width: 50px;
+      height: 50px;
+    }
+    
+    .file-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      word-wrap: break-word;
+      word-break: break-all;
+    }
+    
+    .file-meta-info {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+    }
+    
+    .btn-download-public {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent-gradient);
+      border: none;
+      border-radius: var(--radius-md);
+      color: #fff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+    
+    .btn-download-public:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+    }
+    
+    .btn-download-public:active {
+      transform: translateY(0);
+    }
+    
+    .expiry-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-glass);
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+    
+    .expiry-badge.warning {
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.05);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Shared SVGs for Icons -->
+  <svg style="display: none;">
+    <symbol id="icon-cloud-lock" viewBox="0 0 24 24">
+      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM12 17c-1.1 0-2-.9-2-2v-2c0-1.1.9-2 2-2s2 .9 2 2v2c0 1.1-.9 2-2 2zm1.2-4.2c0-.66-.54-1.2-1.2-1.2s-1.2.54-1.2 1.2v2.4c0 .66.54 1.2 1.2 1.2s1.2-.54 1.2-1.2v-2.4z"/>
+    </symbol>
+    <symbol id="icon-file" viewBox="0 0 24 24">
+      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+    </symbol>
+    <symbol id="icon-image" viewBox="0 0 24 24">
+      <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+    </symbol>
+    <symbol id="icon-video" viewBox="0 0 24 24">
+      <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
+    </symbol>
+    <symbol id="icon-audio" viewBox="0 0 24 24">
+      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+    </symbol>
+    <symbol id="icon-text" viewBox="0 0 24 24">
+      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+    </symbol>
+    <symbol id="icon-pdf" viewBox="0 0 24 24">
+      <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-2.5H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 8.5H10v1H9v-1zm5 1.5h1v1h-1v-1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24">
+      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+    </symbol>
+  </svg>
+
+  <div class="app-container">
+    
+    <!-- GUEST DOWNLOAD CARD -->
+    <div id="download-box" class="download-card glass-card" style="display: none;">
+      <div id="file-icon-container" class="file-icon-box">
+        <!-- Rendered by JS -->
+      </div>
+      <h1 id="file-title" class="file-title">Datei...</h1>
+      
+      <div class="file-meta-info">
+        <span id="file-size">Lade Größe...</span>
+      </div>
+
+      <div id="expiry-info" class="expiry-badge">
+        Lade Ablaufdatum...
+      </div>
+
+      <a href="#" id="download-button" class="btn-download-public">
+        <svg style="width:20px; height:20px; fill:#fff;"><use href="#icon-download"></use></svg>
+        Datei sicher herunterladen
+      </a>
+    </div>
+
+    <!-- ERROR CARD -->
+    <div id="error-box" class="download-card glass-card" style="display: none; border-color: rgba(239, 68, 68, 0.35);">
+      <div class="file-icon-box" style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.25);">
+        <svg style="fill: var(--danger);"><use href="#icon-cloud-lock"></use></svg>
+      </div>
+      <h1 style="color: var(--danger); font-size:24px;">Link ungültig</h1>
+      <p class="subtitle" id="error-message" style="margin-top: 16px; margin-bottom: 0;">Dieser Freigabelink existiert nicht, wurde vom Besitzer gelöscht oder ist abgelaufen.</p>
+    </div>
+
+  </div>
+
+  <script>
+    // Format bytes
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Get file icon based on name
+    function getFileIconSymbol(fileName) {
+      const ext = fileName.split('.').pop().toLowerCase();
+      if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) return 'icon-image';
+      if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) return 'icon-video';
+      if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) return 'icon-audio';
+      if (['txt', 'md', 'json', 'js', 'css', 'html', 'log'].includes(ext)) return 'icon-text';
+      if (ext === 'pdf') return 'icon-pdf';
+      return 'icon-file';
+    }
+
+    // Main Init
+    async function initSharePage() {
+      const pathParts = window.location.pathname.split('/');
+      const shareId = pathParts[pathParts.length - 1];
+      const key = window.location.hash.substring(1); // Read key from #hash
+
+      const downloadBox = document.getElementById('download-box');
+      const errorBox = document.getElementById('error-box');
+      const errorMsg = document.getElementById('error-message');
+
+      if (!shareId) {
+        showError('Ungültige Freigabe-ID.');
+        return;
+      }
+
+      if (!key || key.length !== 64) {
+        showError('Fehlender oder ungültiger Entschlüsselungsschlüssel im Link. Bitte überprüfe den vollständigen Link inklusive des #zeichens am Ende.');
+        return;
+      }
+
+      try {
+        // Fetch public metadata
+        const res = await fetch(`/api/public/shares/${shareId}`);
+        
+        if (!res.ok) {
+          const errData = await res.json();
+          showError(errData.error || 'Dieser Link ist nicht mehr gültig.');
+          return;
+        }
+
+        const data = await res.json();
+
+        // Render Page
+        document.getElementById('file-title').innerText = data.fileName;
+        document.getElementById('file-size').innerText = `Dateigröße: ${formatBytes(data.size)}`;
+        
+        // Expiry Info
+        const expiryInfo = document.getElementById('expiry-info');
+        if (data.expiresAt) {
+          const expDate = new Date(data.expiresAt);
+          expiryInfo.innerText = `Link läuft ab am: ${expDate.toLocaleDateString()} um ${expDate.toLocaleTimeString()}`;
+          // Show warning badge if expires in less than 2 hours
+          if (expDate - new Date() < 2 * 60 * 60 * 1000) {
+            expiryInfo.classList.add('warning');
+          }
+        } else {
+          expiryInfo.innerText = 'Dauerhafte Freigabe (unbegrenzt gültig)';
+        }
+
+        // Icon
+        const iconSym = getFileIconSymbol(data.fileName);
+        const iconClass = iconSym.replace('icon-', '');
+        document.getElementById('file-icon-container').innerHTML = `
+          <svg class="svg-icon ${iconClass}"><use href="#${iconSym}"></use></svg>
+        `;
+
+        // Download link
+        const dlButton = document.getElementById('download-button');
+        dlButton.href = `/api/public/download/${shareId}?key=${key}`;
+        dlButton.download = data.fileName;
+
+        downloadBox.style.display = 'block';
+      } catch (e) {
+        showError('Verbindungsfehler beim Laden der Freigabe.');
+      }
+
+      function showError(msg) {
+        errorMsg.innerText = msg;
+        errorBox.style.display = 'block';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initSharePage);
+    // Listen to hash changes just in case they re-enter the link
+    window.addEventListener('hashchange', initSharePage);
+  </script>
+</body>
+</html>
