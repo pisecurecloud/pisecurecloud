@@ -283,6 +283,7 @@ if [ -d "$SRC_DIR/.git" ]; then
   cd "$SRC_DIR" || exit 1
   if git remote | grep -q '.'; then
     echo "Hole aktuelle Änderungen von Git (git fetch & reset)..."
+    git config --global --add safe.directory "$SRC_DIR" 2>/dev/null || true
     git fetch --all
     BRANCH=$(git symbolic-ref --short -q HEAD || echo "main")
     git reset --hard "origin/$BRANCH"
