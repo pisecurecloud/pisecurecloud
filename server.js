@@ -822,7 +822,11 @@ app.get('/api/download/:id', requireAuth, (req, res) => {
     } else {
       res.status(200);
       res.setHeader('Content-Length', plainFileSize);
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileMeta.name)}"`);
+      if (req.query.inline === 'true') {
+        // Serve inline, e.g. for previews
+      } else {
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileMeta.name)}"`);
+      }
     }
 
     const startChunkIdx = Math.floor(startPlain / CHUNK_SIZE);
@@ -1452,7 +1456,11 @@ app.get('/api/public/download/:id', (req, res) => {
     } else {
       res.status(200);
       res.setHeader('Content-Length', plainFileSize);
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(share.fileName)}"`);
+      if (req.query.inline === 'true') {
+        // Serve inline, e.g. for previews
+      } else {
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(share.fileName)}"`);
+      }
     }
 
     const startChunkIdx = Math.floor(startPlain / CHUNK_SIZE);
