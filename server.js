@@ -8,6 +8,9 @@ const cors = require('cors');
 const { exec } = require('child_process');
 const archiver = require('archiver');
 const { Readable } = require('stream');
+const AdmZip = require('adm-zip');
+const fsPromises = fs.promises;
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -560,6 +563,525 @@ async function reEncryptFile(srcPath, destPath, oldKey, newKey) {
     }
   });
 }
+
+// --- BACKUP HELPER FUNCTIONS ---
+function deriveBackupKey(password) {
+  return crypto.pbkdf2Sync(password, 'pisecurecloud-backup-salt', 100000, 32, 'sha256').toString('hex');
+}
+
+async function encryptFileChunked(srcPath, destPath, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  const CHUNK_SIZE = 1024 * 1024; // 1 MB
+  let readFd, writeFd;
+  try {
+    readFd = await fsPromises.open(srcPath, 'r');
+    writeFd = await fsPromises.open(destPath, 'w');
+    
+    const buffer = Buffer.alloc(CHUNK_SIZE);
+    let offset = 0;
+    while (true) {
+      const { bytesRead } = await readFd.read(buffer, 0, CHUNK_SIZE, offset);
+      if (bytesRead === 0) break;
+      
+      const chunk = buffer.subarray(0, bytesRead);
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const encrypted = Buffer.concat([cipher.update(chunk), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      
+      const header = Buffer.alloc(4 + 12 + 16);
+      header.writeUInt32BE(encrypted.length, 0);
+      iv.copy(header, 4);
+      tag.copy(header, 4 + 12);
+      
+      await writeFd.write(header);
+      await writeFd.write(encrypted);
+      
+      offset += bytesRead;
+    }
+  } finally {
+    if (readFd) await readFd.close();
+    if (writeFd) await writeFd.close();
+  }
+}
+
+async function decryptFileChunked(srcPath, destPath, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  let readFd, writeFd;
+  try {
+    readFd = await fsPromises.open(srcPath, 'r');
+    writeFd = await fsPromises.open(destPath, 'w');
+    
+    let offset = 0;
+    const headerBuffer = Buffer.alloc(4 + 12 + 16);
+    
+    while (true) {
+      const { bytesRead: headerBytes } = await readFd.read(headerBuffer, 0, headerBuffer.length, offset);
+      if (headerBytes === 0) break; // EOF
+      if (headerBytes < headerBuffer.length) {
+        throw new Error("Ungültiges Backup-Format: Header unvollständig.");
+      }
+      
+      const encryptedLength = headerBuffer.readUInt32BE(0);
+      const iv = headerBuffer.subarray(4, 16);
+      const tag = headerBuffer.subarray(16, 32);
+      
+      offset += headerBuffer.length;
+      
+      const encryptedBuffer = Buffer.alloc(encryptedLength);
+      const { bytesRead: dataBytes } = await readFd.read(encryptedBuffer, 0, encryptedLength, offset);
+      if (dataBytes < encryptedLength) {
+        throw new Error("Ungültiges Backup-Format: Datenblock unvollständig.");
+      }
+      
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
+      
+      await writeFd.write(decrypted);
+      offset += encryptedLength;
+    }
+  } finally {
+    if (readFd) await readFd.close();
+    if (writeFd) await writeFd.close();
+  }
+}
+
+function copyFolderRecursiveSync(src, dest) {
+  if (!fs.existsSync(src)) return;
+  const stats = fs.statSync(src);
+  if (stats.isDirectory()) {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true });
+    }
+    fs.readdirSync(src).forEach((childItemName) => {
+      copyFolderRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+    });
+  } else {
+    fs.copyFileSync(src, dest);
+  }
+}
+
+async function createBackupFile(destFolder, keyHex) {
+  const config = getConfig();
+  if (!config) throw new Error("Konfiguration konnte nicht geladen werden.");
+  const storageDir = config.storageDir;
+  if (!storageDir) throw new Error("Speicherverzeichnis (storageDir) ist nicht konfiguriert.");
+
+  // Create temporary zip path
+  const tempZipName = `backup_${Date.now()}_temp.zip`;
+  const tempZipPath = path.join(tempUploadDir, tempZipName);
+  
+  // Make sure destFolder exists
+  if (!fs.existsSync(destFolder)) {
+    fs.mkdirSync(destFolder, { recursive: true });
+  }
+
+  // Define backup output filename
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupEncName = `backup_${timestamp}.enc`;
+  const backupEncPath = path.join(destFolder, backupEncName);
+
+  const output = fs.createWriteStream(tempZipPath);
+  const archive = archiver('zip', { zlib: { level: 9 } });
+
+  return new Promise((resolve, reject) => {
+    output.on('close', async () => {
+      try {
+        await encryptFileChunked(tempZipPath, backupEncPath, keyHex);
+        fs.unlinkSync(tempZipPath);
+        resolve(backupEncName);
+      } catch (err) {
+        if (fs.existsSync(tempZipPath)) {
+          try { fs.unlinkSync(tempZipPath); } catch (_) {}
+        }
+        reject(err);
+      }
+    });
+
+    archive.on('error', (err) => {
+      reject(err);
+    });
+
+    archive.pipe(output);
+
+    // 1. Add files directly under CONFIG_DIR to "config/" in ZIP
+    if (fs.existsSync(CONFIG_DIR)) {
+      const files = fs.readdirSync(CONFIG_DIR);
+      for (const file of files) {
+        const fullPath = path.join(CONFIG_DIR, file);
+        const stat = fs.statSync(fullPath);
+        if (stat.isFile()) {
+          if (file.endsWith('.json') || file === 'offline.flag') {
+            archive.file(fullPath, { name: `config/${file}` });
+          }
+        }
+      }
+    }
+
+    // Include dev configs if running locally
+    const devConfigFile = path.join(__dirname, 'config.dev.json');
+    if (fs.existsSync(devConfigFile)) {
+      archive.file(devConfigFile, { name: 'config/config.dev.json' });
+    }
+    const devSharesFile = path.join(__dirname, 'shares.dev.json');
+    if (fs.existsSync(devSharesFile)) {
+      archive.file(devSharesFile, { name: 'config/shares.dev.json' });
+    }
+
+    // 2. Add storageDir recursively to "storage/" in ZIP, excluding the destFolder
+    const resolvedDestFolder = path.resolve(destFolder);
+    
+    function addDirectory(currentDir, zipSubDir) {
+      if (!fs.existsSync(currentDir)) return;
+      const items = fs.readdirSync(currentDir);
+      for (const item of items) {
+        const fullPath = path.join(currentDir, item);
+        const resolvedPath = path.resolve(fullPath);
+        
+        if (resolvedPath === resolvedDestFolder) {
+          continue;
+        }
+
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory()) {
+          addDirectory(fullPath, path.join(zipSubDir, item));
+        } else if (stat.isFile()) {
+          archive.file(fullPath, { name: path.join(zipSubDir, item) });
+        }
+      }
+    }
+
+    addDirectory(storageDir, 'storage');
+    archive.finalize();
+  });
+}
+
+function rotateBackups(destFolder, retentionDays) {
+  if (!fs.existsSync(destFolder)) return [];
+  const files = fs.readdirSync(destFolder);
+  const now = Date.now();
+  const deletedFiles = [];
+  
+  for (const file of files) {
+    if (file.startsWith('backup_') && file.endsWith('.enc')) {
+      const filePath = path.join(destFolder, file);
+      const stat = fs.statSync(filePath);
+      const ageMs = now - stat.mtimeMs;
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      
+      if (ageDays > retentionDays) {
+        fs.unlinkSync(filePath);
+        deletedFiles.push(file);
+      }
+    }
+  }
+  return deletedFiles;
+}
+
+async function restoreBackupFile(encFilePath, keyHex) {
+  const tempZipPath = path.join(tempUploadDir, `restore_${Date.now()}_temp.zip`);
+  const tempExtractDir = path.join(tempUploadDir, `restore_${Date.now()}_extracted`);
+
+  try {
+    await decryptFileChunked(encFilePath, tempZipPath, keyHex);
+    
+    if (!fs.existsSync(tempExtractDir)) {
+      fs.mkdirSync(tempExtractDir, { recursive: true });
+    }
+    
+    const zip = new AdmZip(tempZipPath);
+    zip.extractAllTo(tempExtractDir, true);
+
+    const extractedConfigDir = path.join(tempExtractDir, 'config');
+    const extractedStorageDir = path.join(tempExtractDir, 'storage');
+    
+    const hasConfig = fs.existsSync(path.join(extractedConfigDir, 'config.json')) ||
+                      fs.existsSync(path.join(extractedConfigDir, 'config.dev.json'));
+                      
+    if (!hasConfig) {
+      throw new Error("Ungültiges Backup-Format: Keine Konfigurationsdatei gefunden.");
+    }
+
+    if (fs.existsSync(extractedConfigDir)) {
+      const configFiles = fs.readdirSync(extractedConfigDir);
+      for (const file of configFiles) {
+        const srcFile = path.join(extractedConfigDir, file);
+        let destFile = file.endsWith('.dev.json') ? path.join(__dirname, file) : path.join(CONFIG_DIR, file);
+        
+        const parentDir = path.dirname(destFile);
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
+        }
+        
+        fs.copyFileSync(srcFile, destFile);
+      }
+    }
+
+    const restoredConfig = getConfig();
+    if (!restoredConfig || !restoredConfig.storageDir) {
+      throw new Error("Wiederhergestellte Konfiguration ist ungültig.");
+    }
+    
+    const targetStorageDir = restoredConfig.storageDir;
+    if (fs.existsSync(extractedStorageDir)) {
+      copyFolderRecursiveSync(extractedStorageDir, targetStorageDir);
+    }
+
+    try {
+      fs.unlinkSync(tempZipPath);
+      fs.rmSync(tempExtractDir, { recursive: true, force: true });
+    } catch (_) {}
+
+    return true;
+  } catch (err) {
+    try {
+      if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
+      if (fs.existsSync(tempExtractDir)) fs.rmSync(tempExtractDir, { recursive: true, force: true });
+    } catch (_) {}
+    throw err;
+  }
+}
+
+let schedulerInterval = null;
+function startBackupScheduler() {
+  if (schedulerInterval) clearInterval(schedulerInterval);
+  schedulerInterval = setInterval(checkAndRunScheduledBackup, 10 * 60 * 1000);
+  setTimeout(checkAndRunScheduledBackup, 5000);
+}
+
+async function checkAndRunScheduledBackup() {
+  try {
+    const config = getConfig();
+    if (!config || !config.backupSettings || !config.backupSettings.enabled) {
+      return;
+    }
+    
+    const settings = config.backupSettings;
+    const now = new Date();
+    const currentHour = now.getHours();
+    
+    if (currentHour === (settings.executionHour !== undefined ? parseInt(settings.executionHour) : 2)) {
+      const todayStr = now.toISOString().split('T')[0];
+      if (settings.lastBackupDate !== todayStr) {
+        console.log(`[Backup-Scheduler] Starte automatischen Backup für ${todayStr}...`);
+        
+        if (!settings.keyHex) {
+          console.error("[Backup-Scheduler] Fehler: Kein Backup-Schlüssel in Konfiguration gefunden.");
+          return;
+        }
+        
+        const backupFile = await createBackupFile(settings.destFolder || '/var/lib/pisecurecloud/backups', settings.keyHex);
+        console.log(`[Backup-Scheduler] Backup erfolgreich erstellt: ${backupFile}`);
+        
+        const deleted = rotateBackups(settings.destFolder || '/var/lib/pisecurecloud/backups', settings.retentionDays || 7);
+        if (deleted.length > 0) {
+          console.log(`[Backup-Scheduler] Veraltete Backups gelöscht: ${deleted.join(', ')}`);
+        }
+        
+        const updatedConfig = getConfig();
+        if (updatedConfig && updatedConfig.backupSettings) {
+          updatedConfig.backupSettings.lastBackupDate = todayStr;
+          saveConfig(updatedConfig);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Backup-Scheduler] Fehler im automatischen Backup:", err);
+  }
+}
+
+// --- BACKUP API ROUTES ---
+
+// 1. Get Backup Settings
+app.get('/api/admin/backup/settings', requireAuth, requireAdmin, (req, res) => {
+  const config = getConfig();
+  const settings = (config && config.backupSettings) || {};
+  res.json({
+    enabled: settings.enabled || false,
+    destFolder: settings.destFolder || '/var/lib/pisecurecloud/backups',
+    retentionDays: settings.retentionDays || 7,
+    executionHour: settings.executionHour !== undefined ? settings.executionHour : 2,
+    hasPassword: !!settings.keyHex
+  });
+});
+
+// 2. Save Backup Settings
+app.post('/api/admin/backup/settings', requireAuth, requireAdmin, (req, res) => {
+  const { enabled, destFolder, retentionDays, executionHour, masterPassword } = req.body;
+  
+  if (enabled && !destFolder) {
+    return res.status(400).json({ error: 'Zielordner ist erforderlich, wenn Backups aktiviert sind.' });
+  }
+
+  const config = getConfig();
+  if (!config) {
+    return res.status(500).json({ error: 'Konfiguration konnte nicht geladen werden.' });
+  }
+
+  if (!config.backupSettings) {
+    config.backupSettings = {};
+  }
+
+  config.backupSettings.enabled = !!enabled;
+  config.backupSettings.destFolder = destFolder || '/var/lib/pisecurecloud/backups';
+  config.backupSettings.retentionDays = parseInt(retentionDays) || 7;
+  config.backupSettings.executionHour = parseInt(executionHour) !== undefined ? parseInt(executionHour) : 2;
+
+  if (masterPassword) {
+    config.backupSettings.keyHex = deriveBackupKey(masterPassword);
+  } else if (enabled && !config.backupSettings.keyHex) {
+    return res.status(400).json({ error: 'Backup-Master-Passwort ist erforderlich, um Backups zu aktivieren.' });
+  }
+
+  saveConfig(config);
+  logActivity(req.session.userId, 'Backup', 'Backup-Einstellungen aktualisiert');
+  
+  // Restart scheduler to pick up new config
+  startBackupScheduler();
+
+  res.json({ success: true, message: 'Backup-Einstellungen erfolgreich gespeichert.' });
+});
+
+// 3. Trigger manual backup
+app.post('/api/admin/backup/run', requireAuth, requireAdmin, async (req, res) => {
+  const config = getConfig();
+  const settings = config && config.backupSettings;
+  if (!settings || !settings.keyHex) {
+    return res.status(400).json({ error: 'Backup ist nicht konfiguriert oder Passwort fehlt.' });
+  }
+
+  try {
+    logActivity(req.session.userId, 'Backup', 'Manuelles Backup gestartet');
+    const backupFile = await createBackupFile(settings.destFolder, settings.keyHex);
+    
+    // Rotate old backups
+    const deleted = rotateBackups(settings.destFolder, settings.retentionDays);
+    
+    logActivity(req.session.userId, 'Backup', `Manuelles Backup erfolgreich erstellt: ${backupFile}`);
+    res.json({
+      success: true,
+      message: 'Backup erfolgreich erstellt.',
+      filename: backupFile,
+      rotated: deleted
+    });
+  } catch (err) {
+    console.error("Fehler beim manuellen Backup:", err);
+    res.status(500).json({ error: 'Backup-Erstellung fehlgeschlagen: ' + err.message });
+  }
+});
+
+// 4. List backup files
+app.get('/api/admin/backup/list', requireAuth, requireAdmin, (req, res) => {
+  const config = getConfig();
+  const settings = config && config.backupSettings;
+  const destFolder = (settings && settings.destFolder) || '/var/lib/pisecurecloud/backups';
+
+  if (!fs.existsSync(destFolder)) {
+    return res.json([]);
+  }
+
+  try {
+    const files = fs.readdirSync(destFolder);
+    const backups = [];
+    for (const file of files) {
+      if (file.startsWith('backup_') && file.endsWith('.enc')) {
+        const filePath = path.join(destFolder, file);
+        const stat = fs.statSync(filePath);
+        backups.push({
+          filename: file,
+          size: stat.size,
+          createdAt: stat.mtime
+        });
+      }
+    }
+    // Sort descending by date
+    backups.sort((a, b) => b.createdAt - a.createdAt);
+    res.json(backups);
+  } catch (err) {
+    console.error("Fehler beim Auflisten der Backups:", err);
+    res.status(500).json({ error: 'Fehler beim Auflisten der Backups: ' + err.message });
+  }
+});
+
+// 5. Delete backup file
+app.post('/api/admin/backup/delete', requireAuth, requireAdmin, (req, res) => {
+  const { filename } = req.body;
+  if (!filename || typeof filename !== 'string' || !filename.startsWith('backup_') || !filename.endsWith('.enc') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Ungültiger Backup-Dateiname.' });
+  }
+
+  const config = getConfig();
+  const settings = config && config.backupSettings;
+  const destFolder = (settings && settings.destFolder) || '/var/lib/pisecurecloud/backups';
+  const filePath = path.join(destFolder, filename);
+
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      logActivity(req.session.userId, 'Backup', `Backup-Datei gelöscht: ${filename}`);
+      res.json({ success: true, message: 'Backup-Datei erfolgreich gelöscht.' });
+    } else {
+      res.status(404).json({ error: 'Backup-Datei nicht gefunden.' });
+    }
+  } catch (err) {
+    console.error("Fehler beim Löschen des Backups:", err);
+    res.status(500).json({ error: 'Fehler beim Löschen des Backups: ' + err.message });
+  }
+});
+
+// 6. Restore backup
+app.post('/api/admin/backup/restore', requireAuth, requireAdmin, async (req, res) => {
+  const { filename, password } = req.body;
+  if (!filename || !password) {
+    return res.status(400).json({ error: 'Dateiname und Passwort erforderlich.' });
+  }
+  if (typeof filename !== 'string' || !filename.startsWith('backup_') || !filename.endsWith('.enc') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ error: 'Ungültiger Backup-Dateiname.' });
+  }
+
+  const config = getConfig();
+  const settings = config && config.backupSettings;
+  const destFolder = (settings && settings.destFolder) || '/var/lib/pisecurecloud/backups';
+  const filePath = path.join(destFolder, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Backup-Datei nicht gefunden.' });
+  }
+
+  try {
+    logActivity(req.session.userId, 'Backup', `Backup-Wiederherstellung gestartet für ${filename}`);
+    const keyHex = deriveBackupKey(password);
+    
+    // Attempt restore
+    await restoreBackupFile(filePath, keyHex);
+    
+    logActivity(req.session.userId, 'Backup', `Backup-Wiederherstellung erfolgreich abgeschlossen: ${filename}`);
+    
+    // Respond to user that restore succeeded and system will restart
+    res.json({ success: true, message: 'System erfolgreich wiederhergestellt. Der Server startet jetzt neu...' });
+
+    // Schedule restart
+    setTimeout(() => {
+      if (process.platform === 'win32') {
+        console.log("[Backup-System] Simuliere Service-Neustart auf Windows (Beende Prozess)...");
+        process.exit(0);
+      } else {
+        console.log("[Backup-System] Führe systemd-run aus, um Dienst neu zu starten...");
+        exec('systemd-run --on-active=1s systemctl restart pisecurecloud.service', (err) => {
+          if (err) {
+            console.error("[Backup-System] Fehler bei systemd-run restart, versuche direkten restart:", err);
+            exec('systemctl restart pisecurecloud.service');
+          }
+        });
+      }
+    }, 1000);
+
+  } catch (err) {
+    console.error("Fehler bei Backup-Wiederherstellung:", err);
+    res.status(400).json({ error: 'Wiederherstellung fehlgeschlagen. Falsches Passwort oder beschädigtes Backup.' });
+  }
+});
 
 // Middleware: Authenticated & Key available
 function requireAuth(req, res, next) {
@@ -2272,6 +2794,9 @@ function detectGithubPagesUrl() {
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server läuft auf Port ${PORT}`);
+
+  // Start automatic backup scheduler
+  startBackupScheduler();
 
   // Auto-detect GitHub Pages URL
   detectGithubPagesUrl();

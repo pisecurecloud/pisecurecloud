@@ -37,6 +37,15 @@ const usernameDisplay = document.getElementById('username-display');
 const tabAdminBtn = document.getElementById('tab-admin-btn');
 const userTableBody = document.getElementById('user-table-body');
 
+// Backup Elements
+const backupTableBody = document.getElementById('backup-table-body');
+const backupEnabledCheckbox = document.getElementById('backup-enabled');
+const backupDestFolderInput = document.getElementById('backup-dest-folder');
+const backupRetentionInput = document.getElementById('backup-retention');
+const backupHourInput = document.getElementById('backup-hour');
+const backupMasterPasswordInput = document.getElementById('backup-master-password');
+const btnManualBackup = document.getElementById('btn-manual-backup');
+
 // Disk Stats Elements
 const diskText = document.getElementById('disk-text');
 const diskProgress = document.getElementById('disk-progress');
@@ -195,6 +204,8 @@ function switchTab(tabId) {
   } else if (tabId === 'admin') {
     loadUsersList();
     loadActivityLog();
+    loadBackupSettings();
+    loadBackupList();
   } else if (tabId === 'shares') {
     loadSharesList();
   } else if (tabId === 'notes') {
@@ -1585,3 +1596,219 @@ async function loadActivityLog() {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--danger); padding: 20px 0;">Verbindungsfehler beim Laden des Protokolls</td></tr>';
   }
 }
+
+// --- SYSTEM BACKUPS LOGIC ---
+
+async function loadBackupSettings() {
+  try {
+    const res = await fetch('/api/admin/backup/settings');
+    if (!res.ok) {
+      showToast('Backup-Einstellungen konnten nicht geladen werden', 'error');
+      return;
+    }
+    const settings = await res.json();
+    
+    if (backupEnabledCheckbox) backupEnabledCheckbox.checked = settings.enabled;
+    if (backupDestFolderInput) backupDestFolderInput.value = settings.destFolder || '/var/lib/pisecurecloud/backups';
+    if (backupRetentionInput) backupRetentionInput.value = settings.retentionDays || 7;
+    if (backupHourInput) backupHourInput.value = settings.executionHour !== undefined ? settings.executionHour : 2;
+    if (backupMasterPasswordInput) {
+      backupMasterPasswordInput.value = '';
+      backupMasterPasswordInput.placeholder = settings.hasPassword ? '•••••••• (gespeichert)' : 'Backup-Passwort eingeben';
+    }
+  } catch (err) {
+    console.error('Fehler beim Laden der Backup-Einstellungen:', err);
+    showToast('Verbindungsfehler beim Laden der Backup-Einstellungen', 'error');
+  }
+}
+
+async function saveBackupSettings() {
+  if (!backupEnabledCheckbox || !backupDestFolderInput || !backupRetentionInput || !backupHourInput || !backupMasterPasswordInput) return;
+  
+  const enabled = backupEnabledCheckbox.checked;
+  const destFolder = backupDestFolderInput.value.trim();
+  const retentionDays = parseInt(backupRetentionInput.value) || 7;
+  const executionHour = parseInt(backupHourInput.value) !== undefined ? parseInt(backupHourInput.value) : 2;
+  const masterPassword = backupMasterPasswordInput.value;
+
+  if (enabled && !destFolder) {
+    showToast('Zielordner ist erforderlich, wenn Backups aktiviert sind', 'error');
+    return;
+  }
+
+  const hasExistingPassword = backupMasterPasswordInput.placeholder.includes('gespeichert');
+  if (enabled && !hasExistingPassword && !masterPassword) {
+    showToast('Ein Master-Backup-Passwort ist erforderlich, um Backups zu aktivieren.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/backup/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled,
+        destFolder,
+        retentionDays,
+        executionHour,
+        masterPassword: masterPassword || undefined
+      })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      showToast(data.message || 'Backup-Einstellungen erfolgreich gespeichert', 'success');
+      loadBackupSettings();
+    } else {
+      showToast(data.error || 'Fehler beim Speichern der Einstellungen', 'error');
+    }
+  } catch (err) {
+    console.error('Fehler beim Speichern der Backup-Einstellungen:', err);
+    showToast('Verbindungsfehler beim Speichern der Backup-Einstellungen', 'error');
+  }
+}
+
+async function runManualBackup() {
+  if (!btnManualBackup) return;
+  const originalText = btnManualBackup.innerText;
+  btnManualBackup.disabled = true;
+  btnManualBackup.innerText = 'Sichert...';
+  
+  try {
+    const res = await fetch('/api/admin/backup/run', { method: 'POST' });
+    const data = await res.json();
+    
+    if (res.ok) {
+      showToast(data.message || 'Backup erfolgreich erstellt', 'success');
+      loadBackupList();
+    } else {
+      showToast(data.error || 'Fehler beim Erstellen des Backups', 'error');
+    }
+  } catch (err) {
+    console.error('Fehler beim manuellen Backup:', err);
+    showToast('Verbindungsfehler beim Erstellen des Backups', 'error');
+  } finally {
+    btnManualBackup.disabled = false;
+    btnManualBackup.innerText = originalText;
+  }
+}
+
+async function loadBackupList() {
+  if (!backupTableBody) return;
+  backupTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Lade Backups...</td></tr>';
+  
+  try {
+    const res = await fetch('/api/admin/backup/list');
+    if (!res.ok) {
+      backupTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--danger);">Fehler beim Laden der Backups.</td></tr>';
+      return;
+    }
+    
+    const backups = await res.json();
+    backupTableBody.innerHTML = '';
+    
+    if (backups.length === 0) {
+      backupTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 20px 0;">Keine Backups vorhanden.</td></tr>';
+      return;
+    }
+    
+    backups.forEach(backup => {
+      const tr = document.createElement('tr');
+      const timeStr = new Date(backup.createdAt).toLocaleString('de-DE');
+      
+      tr.innerHTML = `
+        <td style="font-family: monospace; font-size: 12px; color: var(--text-main); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHTML(backup.filename)}">
+          ${escapeHTML(backup.filename)}
+        </td>
+        <td style="color: var(--text-muted);">${escapeHTML(formatBytes(backup.size))}</td>
+        <td style="color: var(--text-muted); font-size: 12px;">${escapeHTML(timeStr)}</td>
+        <td>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-primary" style="padding: 6px 10px; font-size: 11px; width: auto;" onclick="restoreBackupFile('${escapeJS(backup.filename)}')">Restore</button>
+            <button class="btn-logout" style="padding: 6px 10px; font-size: 11px; width: auto; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: var(--danger);" onclick="deleteBackupFile('${escapeJS(backup.filename)}')">Löschen</button>
+          </div>
+        </td>
+      `;
+      backupTableBody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Fehler beim Laden der Backups:', err);
+    backupTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--danger);">Verbindungsfehler beim Laden der Backups.</td></tr>';
+  }
+}
+
+async function deleteBackupFile(filename) {
+  if (!confirm(`Möchtest du die Backup-Datei "${filename}" wirklich unwiderruflich löschen?`)) {
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/admin/backup/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      showToast(data.message || 'Backup-Datei erfolgreich gelöscht', 'success');
+      loadBackupList();
+    } else {
+      showToast(data.error || 'Fehler beim Löschen der Backup-Datei', 'error');
+    }
+  } catch (err) {
+    console.error('Fehler beim Löschen des Backups:', err);
+    showToast('Verbindungsfehler beim Löschen des Backups', 'error');
+  }
+}
+
+async function restoreBackupFile(filename) {
+  const password = prompt(`Gib das Master-Backup-Passwort ein, um das Backup "${filename}" wiederherzustellen:`);
+  if (password === null) return; // User cancelled
+  if (!password.trim()) {
+    showToast('Passwort darf nicht leer sein.', 'error');
+    return;
+  }
+  
+  if (!confirm("WARNUNG: Alle aktuellen Konfigurationen und Benutzerdaten werden überschrieben und das System wird neu gestartet. Möchtest du wirklich fortfahren?")) {
+    return;
+  }
+  
+  const overlay = document.getElementById('restore-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  
+  try {
+    const res = await fetch('/api/admin/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, password })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Wiederherstellung erfolgreich! Das System startet neu...', 'success');
+      
+      // Wait for service to restart and reload the page
+      let countdown = 8;
+      const interval = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+          clearInterval(interval);
+          window.location.reload();
+        }
+      }, 1000);
+    } else {
+      if (overlay) overlay.style.display = 'none';
+      showToast(data.error || 'Fehler bei der Wiederherstellung', 'error');
+    }
+  } catch (err) {
+    console.error('Fehler bei der Wiederherstellung:', err);
+    if (overlay) overlay.style.display = 'none';
+    showToast('Verbindungsfehler während der Wiederherstellung', 'error');
+  }
+}
+
+function escapeJS(str) {
+  return str.replace(/'/g, "\\'");
+}
+

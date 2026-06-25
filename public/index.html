@@ -437,8 +437,78 @@
                   <div class="system-card-action">
                     <button id="btn-trigger-update" class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="triggerWebUpdate()">Jetzt aktualisieren</button>
                   </div>
+              </div>
+            </div>
+
+            <!-- System-Backups (Neu) -->
+            <div id="backup-section" style="margin-top: 40px; border-top: 1px solid var(--border-glass); padding-top: 30px;">
+              <h2 style="margin-bottom: 8px;">System-Backups</h2>
+              <p class="subtitle" style="margin-bottom: 24px;">Erstelle manuelle oder automatische verschlüsselte Backups deiner Cloud-Daten und -Einstellungen.</p>
+              
+              <div class="backup-grid">
+                <!-- Backup Einstellungen -->
+                <div class="glass-card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+                  <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg style="fill: var(--text-accent); width: 20px; height: 20px;"><use href="#icon-settings"></use></svg>
+                    Backup-Einstellungen
+                  </h3>
+                  
+                  <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="backup-enabled" style="width: auto; margin: 0; cursor: pointer;">
+                    <label for="backup-enabled" style="margin: 0; font-weight: normal; cursor: pointer;">Automatische tägliche Backups aktivieren</label>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="backup-dest-folder">Backup-Zielpfad</label>
+                    <input type="text" id="backup-dest-folder" class="form-control" placeholder="/var/lib/pisecurecloud/backups" required>
+                  </div>
+                  
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label for="backup-retention">Aufbewahrung (Tage)</label>
+                      <input type="number" id="backup-retention" class="form-control" value="7" min="1" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="backup-hour">Uhrzeit (Stunde, 0-23)</label>
+                      <input type="number" id="backup-hour" class="form-control" value="2" min="0" max="23" required>
+                    </div>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="backup-master-password">Master-Backup-Passwort</label>
+                    <input type="password" id="backup-master-password" class="form-control" placeholder="Backup-Passwort eingeben">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block; line-height: 1.4;">Dieses Passwort wird zur Verschlüsselung verwendet. Bewahre es gut auf!</small>
+                  </div>
+                  
+                  <div class="backup-action-buttons">
+                    <button class="btn-primary" onclick="saveBackupSettings()" style="flex: 1;">Einstellungen speichern</button>
+                    <button id="btn-manual-backup" class="btn-secondary" onclick="runManualBackup()" style="flex: 1;">Jetzt sichern</button>
+                  </div>
                 </div>
 
+                <!-- Backup-Dateien -->
+                <div class="glass-card" style="padding: 24px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+                  <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                    <svg style="fill: var(--text-accent); width: 20px; height: 20px;"><use href="#icon-folder"></use></svg>
+                    Gespeicherte Backups
+                  </h3>
+                  
+                  <div class="table-container" style="flex: 1; overflow-y: auto; max-height: 280px; margin: 0; border: 1px solid var(--border-glass); border-radius: 8px;">
+                    <table class="user-table" style="margin: 0; width: 100%;">
+                      <thead>
+                        <tr>
+                          <th>Dateiname</th>
+                          <th>Größe</th>
+                          <th>Datum</th>
+                          <th>Aktionen</th>
+                        </tr>
+                      </thead>
+                      <tbody id="backup-table-body">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Lade Backups...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -579,6 +649,19 @@
       <h2 style="margin-bottom: 12px;">System wird aktualisiert</h2>
       <p class="subtitle" style="margin-bottom: 16px; font-size: 14px;">Der Server lädt die neuesten Dateien von GitHub herunter und startet sich neu.</p>
       <p class="subtitle" style="font-size: 13px; color: var(--accent-secondary); font-weight: 600; margin-bottom: 24px;">Bitte warte einen Moment, die Seite wird gleich automatisch neu geladen...</p>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- SYSTEM RESTORE OVERLAY MODAL (Neu) -->
+  <div id="restore-overlay" class="dialog-overlay" style="z-index: 10000; background: rgba(10, 11, 16, 0.95); display: none;">
+    <div class="dialog-content glass-card" style="max-width: 450px; text-align: center; padding: 40px; border-color: rgba(239, 68, 68, 0.25);">
+      <div class="logo-container" style="background: linear-gradient(135deg, #ef4444, #b91c1c); animation: pulse 2s infinite; box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3); margin: 0 auto 24px auto;">
+        <svg style="width:32px; height:32px; fill:#fff;"><use href="#icon-cloud-lock"></use></svg>
+      </div>
+      <h2 style="margin-bottom: 12px;">Backup wird wiederhergestellt</h2>
+      <p class="subtitle" style="margin-bottom: 16px; font-size: 14px;">Das System entschlüsselt das Backup und stellt alle Konfigurationen und Dateien wieder her.</p>
+      <p class="subtitle" style="font-size: 13px; color: var(--danger); font-weight: 600; margin-bottom: 24px;">Bitte warte einen Moment, das System startet neu und diese Seite lädt gleich automatisch...</p>
       <div class="spinner"></div>
     </div>
   </div>
