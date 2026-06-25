@@ -475,56 +475,58 @@
                   <p class="system-card-desc">Lädt die neuesten Programmaktualisierungen von GitHub herunter und startet den Cloud-Dienst automatisch neu.</p>
                   <div class="system-card-action">
                     <button id="btn-trigger-update" class="btn-primary" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="triggerWebUpdate()">Jetzt aktualisieren</button>
-              </div>
-
-              <!-- Hardware-Status Karte (Neu) -->
-              <div class="system-card glass-card" id="hardware-status-card">
-                <div class="system-card-header">
-                  <div class="system-card-icon" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.2);">
-                    <svg style="fill: #10b981; width: 22px; height: 22px; display: block;"><use href="#icon-settings"></use></svg>
                   </div>
-                  <h3>Hardware-Status</h3>
                 </div>
-                <div class="hardware-stats-container">
-                  <!-- CPU Load -->
-                  <div class="hardware-stat-item">
-                    <div class="hardware-stat-label-row">
-                      <span>CPU-Auslastung:</span>
-                      <span id="stat-cpu-load" class="hardware-stat-value">0%</span>
+
+                <!-- Hardware-Status Karte (Neu) -->
+                <div class="system-card glass-card" id="hardware-status-card">
+                  <div class="system-card-header">
+                    <div class="system-card-icon" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.2);">
+                      <svg style="fill: #10b981; width: 22px; height: 22px; display: block;"><use href="#icon-settings"></use></svg>
                     </div>
-                    <div class="hardware-progress-bg">
-                      <div id="progress-cpu-load" class="hardware-progress-fill"></div>
-                    </div>
+                    <h3>Hardware-Status</h3>
                   </div>
-                  <!-- RAM Usage -->
-                  <div class="hardware-stat-item">
-                    <div class="hardware-stat-label-row">
-                      <span>RAM-Nutzung:</span>
-                      <span id="stat-ram-usage" class="hardware-stat-value">0%</span>
+                  <div class="hardware-stats-container">
+                    <!-- CPU Load -->
+                    <div class="hardware-stat-item">
+                      <div class="hardware-stat-label-row">
+                        <span>CPU-Auslastung:</span>
+                        <span id="stat-cpu-load" class="hardware-stat-value">0%</span>
+                      </div>
+                      <div class="hardware-progress-bg">
+                        <div id="progress-cpu-load" class="hardware-progress-fill"></div>
+                      </div>
                     </div>
-                    <div class="hardware-progress-bg">
-                      <div id="progress-ram-usage" class="hardware-progress-fill"></div>
+                    <!-- RAM Usage -->
+                    <div class="hardware-stat-item">
+                      <div class="hardware-stat-label-row">
+                        <span>RAM-Nutzung:</span>
+                        <span id="stat-ram-usage" class="hardware-stat-value">0%</span>
+                      </div>
+                      <div class="hardware-progress-bg">
+                        <div id="progress-ram-usage" class="hardware-progress-fill"></div>
+                      </div>
                     </div>
-                  </div>
-                  <!-- Disk Storage -->
-                  <div class="hardware-stat-item">
-                    <div class="hardware-stat-label-row">
-                      <span>Speicherplatz (HDD/SSD):</span>
-                      <span id="stat-disk-usage" class="hardware-stat-value">0%</span>
+                    <!-- Disk Storage -->
+                    <div class="hardware-stat-item">
+                      <div class="hardware-stat-label-row">
+                        <span>Speicherplatz (HDD/SSD):</span>
+                        <span id="stat-disk-usage" class="hardware-stat-value">0%</span>
+                      </div>
+                      <div class="hardware-progress-bg">
+                        <div id="progress-disk-usage" class="hardware-progress-fill"></div>
+                      </div>
                     </div>
-                    <div class="hardware-progress-bg">
-                      <div id="progress-disk-usage" class="hardware-progress-fill"></div>
-                    </div>
-                  </div>
-                  <!-- CPU Temp & Uptime -->
-                  <div class="hardware-grid-row">
-                    <div class="hardware-grid-item">
-                      <span class="hardware-grid-label">Temperatur</span>
-                      <span id="stat-cpu-temp" class="hardware-grid-value" style="color: #10b981;">0 °C</span>
-                    </div>
-                    <div class="hardware-grid-item">
-                      <span class="hardware-grid-label">Betriebszeit</span>
-                      <span id="stat-uptime" class="hardware-grid-value" style="white-space: nowrap;">0d 0h</span>
+                    <!-- CPU Temp & Uptime -->
+                    <div class="hardware-grid-row">
+                      <div class="hardware-grid-item">
+                        <span class="hardware-grid-label">Temperatur</span>
+                        <span id="stat-cpu-temp" class="hardware-grid-value" style="color: #10b981;">0 °C</span>
+                      </div>
+                      <div class="hardware-grid-item">
+                        <span class="hardware-grid-label">Betriebszeit</span>
+                        <span id="stat-uptime" class="hardware-grid-value" style="white-space: nowrap;">0d 0h</span>
+                      </div>
                     </div>
                   </div>
                 </div>
