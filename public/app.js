@@ -949,7 +949,7 @@ async function createFileShare() {
       const permUrlContainer = document.getElementById('share-perm-container');
       
       if (githubPagesUrl && appBucketId) {
-        const permUrl = `${githubPagesUrl}/share-redirect.html?b=${appBucketId}&id=${data.shareId}#${data.shareKey}`;
+        const permUrl = `${githubPagesUrl}/public/share-redirect.html?b=${appBucketId}&id=${data.shareId}#${data.shareKey}`;
         permUrlOutput.value = permUrl;
         permUrlContainer.style.display = 'block';
       } else {
@@ -1064,7 +1064,7 @@ function copySpecificShareUrl(shareId) {
   if (cachedKey) {
     let fullUrl = '';
     if (githubPagesUrl && appBucketId) {
-      fullUrl = `${githubPagesUrl}/share-redirect.html?b=${appBucketId}&id=${shareId}#${cachedKey}`;
+      fullUrl = `${githubPagesUrl}/public/share-redirect.html?b=${appBucketId}&id=${shareId}#${cachedKey}`;
     } else {
       fullUrl = `${window.location.origin}/share/${shareId}#${cachedKey}`;
     }
