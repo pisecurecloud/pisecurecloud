@@ -1567,7 +1567,130 @@ app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
+// 25. Desktop-Verknüpfung herunterladen
+app.get('/api/download-shortcut', (req, res) => {
+  const config = getConfig();
+  if (!config || !config.bucketId) {
+    return res.status(400).send('System nicht eingerichtet');
+  }
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Verbinde mit PiSecureCloud...</title>
+  <style>
+    body {
+      background: #0f1015;
+      color: #fff;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .loader {
+      border: 4px solid rgba(255,255,255,0.05);
+      border-top: 4px solid #6366f1;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="loader"></div>
+  <p>Lese aktuelle Cloud-Adresse ab...</p>
+  <script>
+    const BUCKET_ID = "${config.bucketId}";
+    fetch(\`https://kvdb.io/\${BUCKET_ID}/url\`)
+      .then(res => {
+        if (!res.ok) throw new Error("Fehler beim Abrufen");
+        return res.text();
+      })
+      .then(url => {
+        const cleanUrl = url.trim();
+        if (cleanUrl.startsWith("https://")) {
+          window.location.replace(cleanUrl);
+        } else {
+          document.body.innerHTML = \`<h3>Ung&uuml;ltige URL gefunden:</h3><p>\${cleanUrl}</p>\`;
+        }
+      })
+      .catch(err => {
+        document.body.innerHTML = \`<h3>Verbindung fehlgeschlagen</h3><p>Die URL konnte nicht abgerufen werden. Laeuft der Pi?</p>\`;
+      });
+  </script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Disposition', 'attachment; filename="MeineCloud.html"');
+  res.send(htmlContent);
+});
+
+// Tunnel Log Monitor Function
+function startTunnelMonitor() {
+  const logPath = (process.platform === 'win32' || process.env.NODE_ENV === 'development')
+    ? path.join(__dirname, 'cloudflared-tunnel.log')
+    : '/var/log/cloudflared-tunnel.log';
+
+  let lastUrl = '';
+
+  setInterval(() => {
+    const config = getConfig();
+    if (!config || !config.bucketId) return;
+
+    if (!fs.existsSync(logPath)) return;
+
+    try {
+      const logContent = fs.readFileSync(logPath, 'utf8');
+      const matches = logContent.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g);
+      if (matches && matches.length > 0) {
+        const currentUrl = matches[matches.length - 1];
+        if (currentUrl !== lastUrl) {
+          console.log(`[MONITOR] Neue Tunnel-URL erkannt: ${currentUrl}`);
+          
+          const https = require('https');
+          const req = https.request(`https://kvdb.io/${config.bucketId}/url`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain'
+            }
+          }, (res) => {
+            res.on('data', () => {});
+          });
+          req.on('error', (e) => {
+            console.error('[MONITOR] Fehler beim Senden an kvdb.io:', e);
+          });
+          req.write(currentUrl);
+          req.end();
+
+          lastUrl = currentUrl;
+        }
+      }
+    } catch (e) {
+      console.error('[MONITOR] Fehler beim Lesen der Tunnel-Logdatei:', e);
+    }
+  }, 10000);
+}
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server läuft auf Port ${PORT}`);
+
+  // Ensure bucket ID for URL tracker exists
+  const config = getConfig();
+  if (config && !config.bucketId) {
+    config.bucketId = 'psc_' + crypto.randomBytes(8).toString('hex');
+    saveConfig(config);
+    console.log(`Generierter URL-Tracker-Bucket: ${config.bucketId}`);
+  }
+
+  // Start background log monitor
+  startTunnelMonitor();
 });
