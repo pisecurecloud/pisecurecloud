@@ -1083,6 +1083,659 @@ app.post('/api/admin/backup/restore', requireAuth, requireAdmin, async (req, res
   }
 });
 
+// --- WEBDAV BACKEND ROUTER ---
+
+function getMimeType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const mimes = {
+    '.txt': 'text/plain',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.zip': 'application/zip',
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.xml': 'application/xml'
+  };
+  return mimes[ext] || 'application/octet-stream';
+}
+
+function getAllChildItemsRecursive(metadata, parentId) {
+  let items = [];
+  const children = metadata.filter(item => item.parentId === parentId);
+  for (const child of children) {
+    items.push(child);
+    if (child.type === 'dir') {
+      items = items.concat(getAllChildItemsRecursive(metadata, child.id));
+    }
+  }
+  return items;
+}
+
+// Basic Auth Middleware for WebDAV
+function requireWebdavAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PiSecureCloud WebDAV"');
+    return res.status(401).send('Authentication required');
+  }
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'basic') {
+    return res.status(400).send('Invalid Authorization header format');
+  }
+
+  const credentials = Buffer.from(parts[1], 'base64').toString('utf-8').split(':');
+  if (credentials.length !== 2) {
+    return res.status(400).send('Invalid credentials format');
+  }
+
+  const [username, password] = credentials;
+  const cleanUsername = username.toLowerCase().trim();
+  const config = getConfig();
+
+  if (!config || !config.users || !config.users[cleanUsername]) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PiSecureCloud WebDAV"');
+    return res.status(401).send('Access denied');
+  }
+
+  const user = config.users[cleanUsername];
+  const hash = hashPassword(password, user.passwordSalt);
+  if (hash !== user.passwordHash) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PiSecureCloud WebDAV"');
+    return res.status(401).send('Access denied');
+  }
+
+  try {
+    const key = deriveKey(password);
+    loadMetadata(config.storageDir, cleanUsername, key);
+    
+    req.webdav = {
+      username: cleanUsername,
+      key: key,
+      config: config
+    };
+    next();
+  } catch (e) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PiSecureCloud WebDAV"');
+    return res.status(401).send('Access denied');
+  }
+}
+
+// Helper: Resolve virtual path to item
+function resolveWebdavPath(metadata, decodedPath) {
+  const parts = decodedPath.split('/').filter(p => p.length > 0);
+  if (parts.length === 0) {
+    return { id: 'root', name: 'root', type: 'dir', parentId: null, exists: true };
+  }
+  
+  let currentId = 'root';
+  let currentItem = null;
+  
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const found = metadata.find(item => item.parentId === currentId && item.name === part);
+    if (!found) {
+      if (i === parts.length - 1) {
+        return { parentId: currentId, name: part, exists: false };
+      }
+      return null; // Parent folder does not exist
+    }
+    currentId = found.id;
+    currentItem = found;
+  }
+  
+  if (currentItem) {
+    currentItem.exists = true;
+  }
+  return currentItem;
+}
+
+// Helper: Build absolute WebDAV URL path
+function buildWebdavHref(prefix, item, metadata) {
+  if (item.id === 'root') return prefix + '/';
+  
+  const segments = [item.name];
+  let current = item;
+  while (current.parentId && current.parentId !== 'root') {
+    const parent = metadata.find(i => i.id === current.parentId);
+    if (!parent) break;
+    segments.unshift(parent.name);
+    current = parent;
+  }
+  let href = prefix + '/' + segments.map(s => encodeURIComponent(s)).join('/');
+  if (item.type === 'dir' && !href.endsWith('/')) {
+    href += '/';
+  }
+  return href;
+}
+
+// Helper: Generate Multi-Status XML for PROPFIND
+function generatePropfindXml(prefix, targetItem, children, metadata) {
+  let xml = `<?xml version="1.0" encoding="utf-8" ?>\n`;
+  xml += `<d:multistatus xmlns:d="DAV:">\n`;
+  
+  const itemsToRender = [];
+  if (targetItem) itemsToRender.push(targetItem);
+  if (children) itemsToRender.push(...children);
+  
+  for (const item of itemsToRender) {
+    const isDir = item.type === 'dir' || item.id === 'root';
+    const href = buildWebdavHref(prefix, item, metadata);
+    const displayName = item.id === 'root' ? 'webdav' : item.name;
+    const size = isDir ? 0 : (item.size || 0);
+    const dateStr = item.created ? new Date(item.created).toUTCString() : new Date().toUTCString();
+    const isoDateStr = item.created ? new Date(item.created).toISOString() : new Date().toISOString();
+    const mimeType = isDir ? 'httpd/unix-directory' : getMimeType(item.name);
+    
+    xml += `  <d:response>\n`;
+    xml += `    <d:href>${href}</d:href>\n`;
+    xml += `    <d:propstat>\n`;
+    xml += `      <d:prop>\n`;
+    xml += `        <d:displayname>${escapeXml(displayName)}</d:displayname>\n`;
+    if (isDir) {
+      xml += `        <d:resourcetype><d:collection/></d:resourcetype>\n`;
+    } else {
+      xml += `        <d:resourcetype/>\n`;
+    }
+    xml += `        <d:getcontentlength>${size}</d:getcontentlength>\n`;
+    xml += `        <d:getlastmodified>${dateStr}</d:getlastmodified>\n`;
+    xml += `        <d:creationdate>${isoDateStr}</d:creationdate>\n`;
+    xml += `        <d:getcontenttype>${mimeType}</d:getcontenttype>\n`;
+    xml += `      </d:prop>\n`;
+    xml += `      <d:status>HTTP/1.1 200 OK</d:status>\n`;
+    xml += `    </d:propstat>\n`;
+    xml += `  </d:response>\n`;
+  }
+  
+  xml += `</d:multistatus>`;
+  return xml;
+}
+
+function escapeXml(unsafe) {
+  if (!unsafe) return '';
+  return unsafe.replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+    }
+  });
+}
+
+// WebDAV Router Setup
+const webdavRouter = express.Router();
+webdavRouter.use(requireWebdavAuth);
+
+// OPTIONS method
+webdavRouter.options('*', (req, res) => {
+  res.setHeader('DAV', '1, 2');
+  res.setHeader('MS-Author-Via', 'DAV');
+  res.setHeader('Allow', 'OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK');
+  res.status(200).end();
+});
+
+// PROPFIND method
+webdavRouter.all('*', async (req, res, next) => {
+  if (req.method !== 'PROPFIND') return next();
+  
+  const prefix = req.baseUrl;
+  const decodedPath = decodeURIComponent(req.path);
+  const { username, key, config } = req.webdav;
+  
+  try {
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const targetItem = resolveWebdavPath(metadata, decodedPath);
+    
+    if (!targetItem) {
+      return res.status(404).send('Not Found');
+    }
+    
+    let children = [];
+    const depth = req.headers.depth !== undefined ? req.headers.depth : '1';
+    
+    if (depth === '1' && (targetItem.type === 'dir' || targetItem.id === 'root')) {
+      children = metadata.filter(item => item.parentId === targetItem.id);
+    }
+    
+    const xml = generatePropfindXml(prefix, targetItem, children, metadata);
+    res.setHeader('Content-Type', 'text/xml; charset="utf-8"');
+    res.status(207).send(xml);
+  } catch (err) {
+    console.error("WebDAV PROPFIND Error:", err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// LOCK method
+webdavRouter.all('*', (req, res, next) => {
+  if (req.method !== 'LOCK') return next();
+  
+  const token = 'opaquelocktoken:' + crypto.randomUUID();
+  res.setHeader('Lock-Token', `<${token}>`);
+  res.setHeader('Content-Type', 'text/xml; charset="utf-8"');
+  res.status(200).send(`<?xml version="1.0" encoding="utf-8" ?>
+<D:prop xmlns:D="DAV:">
+  <D:lockdiscovery>
+    <D:activelock>
+      <D:locktype><D:write/></D:locktype>
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:depth>0</D:depth>
+      <D:owner>Owner</D:owner>
+      <D:timeout>Second-3600</D:timeout>
+      <D:locktoken>
+        <D:href>${token}</D:href>
+      </D:locktoken>
+    </D:activelock>
+  </D:lockdiscovery>
+</D:prop>`);
+});
+
+// UNLOCK method
+webdavRouter.all('*', (req, res, next) => {
+  if (req.method !== 'UNLOCK') return next();
+  res.status(204).end();
+});
+
+// PROPPATCH method
+webdavRouter.all('*', (req, res, next) => {
+  if (req.method !== 'PROPPATCH') return next();
+  
+  res.setHeader('Content-Type', 'text/xml; charset="utf-8"');
+  res.status(207).send(`<?xml version="1.0" encoding="utf-8" ?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>${req.originalUrl}</d:href>
+    <d:propstat>
+      <d:prop><d:lockdiscovery/></d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>`);
+});
+
+// MKCOL method
+webdavRouter.all('*', async (req, res, next) => {
+  if (req.method !== 'MKCOL') return next();
+  
+  const decodedPath = decodeURIComponent(req.path);
+  const { username, key, config } = req.webdav;
+  
+  try {
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const targetItem = resolveWebdavPath(metadata, decodedPath);
+    
+    if (targetItem && targetItem.exists) {
+      return res.status(405).send('Folder already exists');
+    }
+    
+    if (!targetItem) {
+      return res.status(409).send('Conflict: Parent folder not found');
+    }
+    
+    const newDir = {
+      id: crypto.randomUUID(),
+      name: targetItem.name,
+      type: 'dir',
+      parentId: targetItem.parentId,
+      created: new Date().toISOString()
+    };
+    
+    metadata.push(newDir);
+    saveMetadata(username, metadata, config.storageDir, key);
+    logActivity(username, 'WebDAV-Ordner-Erstellung', `Ordner '${targetItem.name}' erstellt über WebDAV`);
+    res.status(201).end();
+  } catch (err) {
+    console.error("WebDAV MKCOL Error:", err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// DELETE method
+webdavRouter.delete('*', async (req, res) => {
+  const decodedPath = decodeURIComponent(req.path);
+  const { username, key, config } = req.webdav;
+  
+  try {
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const targetItem = resolveWebdavPath(metadata, decodedPath);
+    
+    if (!targetItem || !targetItem.exists) {
+      return res.status(404).send('Not Found');
+    }
+    
+    const userStorageDir = getUserStorageDir(config.storageDir, username);
+    
+    if (targetItem.type === 'dir') {
+      const childItems = getAllChildItemsRecursive(metadata, targetItem.id);
+      
+      // Delete physical files
+      for (const item of childItems) {
+        if (item.type === 'file') {
+          const filePath = path.join(userStorageDir, item.diskPath);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+      
+      // Delete metadata entries
+      const childIds = childItems.map(c => c.id);
+      childIds.push(targetItem.id);
+      
+      const newMetadata = metadata.filter(item => !childIds.includes(item.id));
+      saveMetadata(username, newMetadata, config.storageDir, key);
+      
+      logActivity(username, 'WebDAV-Löschen', `Verzeichnis '${targetItem.name}' rekursiv gelöscht über WebDAV`);
+    } else {
+      // Single file delete
+      const filePath = path.join(userStorageDir, targetItem.diskPath);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      
+      const newMetadata = metadata.filter(item => item.id !== targetItem.id);
+      saveMetadata(username, newMetadata, config.storageDir, key);
+      
+      logActivity(username, 'WebDAV-Löschen', `Datei '${targetItem.name}' gelöscht über WebDAV`);
+    }
+    
+    res.status(204).end();
+  } catch (err) {
+    console.error("WebDAV DELETE Error:", err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// GET method
+webdavRouter.get('*', async (req, res) => {
+  const decodedPath = decodeURIComponent(req.path);
+  const { username, key, config } = req.webdav;
+  
+  try {
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const targetItem = resolveWebdavPath(metadata, decodedPath);
+    
+    if (!targetItem || !targetItem.exists) {
+      return res.status(404).send('Not Found');
+    }
+    
+    if (targetItem.type === 'dir') {
+      return res.status(403).send('Directory listing forbidden on WebDAV GET');
+    }
+    
+    const userStorageDir = getUserStorageDir(config.storageDir, username);
+    const encryptedFilePath = path.join(userStorageDir, targetItem.diskPath);
+    if (!fs.existsSync(encryptedFilePath)) {
+      return res.status(404).send('Physical file missing');
+    }
+    
+    // Decrypt and stream file directly
+    res.setHeader('Content-Type', targetItem.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Length', targetItem.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(targetItem.name)}"`);
+    
+    const plainStream = createDecryptedStream(encryptedFilePath, targetItem.size, key);
+    plainStream.pipe(res);
+  } catch (err) {
+    console.error("WebDAV GET Error:", err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// PUT method (File Upload/Overwrite)
+webdavRouter.put('*', async (req, res) => {
+  const decodedPath = decodeURIComponent(req.path);
+  const { username, key, config } = req.webdav;
+  
+  // Save stream to a temporary file
+  const tempPath = path.join(tempUploadDir, `webdav_put_${crypto.randomUUID()}.tmp`);
+  
+  try {
+    const writeStream = fs.createWriteStream(tempPath);
+    await new Promise((resolve, reject) => {
+      req.pipe(writeStream);
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+    
+    const size = fs.statSync(tempPath).size;
+    
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const targetItem = resolveWebdavPath(metadata, decodedPath);
+    
+    if (!targetItem) {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      return res.status(409).send('Conflict: Parent folder not found');
+    }
+    
+    const userStorageDir = getUserStorageDir(config.storageDir, username);
+    let diskPath;
+    let fileId;
+    let isOverwrite = false;
+    
+    if (targetItem.exists) {
+      if (targetItem.type === 'dir') {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        return res.status(405).send('Cannot overwrite directory with file');
+      }
+      fileId = targetItem.id;
+      diskPath = targetItem.diskPath;
+      isOverwrite = true;
+    } else {
+      fileId = crypto.randomUUID();
+      diskPath = fileId + '.enc';
+    }
+    
+    const destPath = path.join(userStorageDir, diskPath);
+    
+    const parentDir = path.dirname(destPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    
+    // Encrypt chunked (keyHex = key.toString('hex'))
+    await encryptFileChunked(tempPath, destPath, key.toString('hex'));
+    fs.unlinkSync(tempPath);
+    
+    if (isOverwrite) {
+      targetItem.size = size;
+      targetItem.created = new Date().toISOString();
+    } else {
+      const mimeType = getMimeType(targetItem.name);
+      const newFile = {
+        id: fileId,
+        name: targetItem.name,
+        type: 'file',
+        parentId: targetItem.parentId,
+        size: size,
+        mimeType: mimeType,
+        diskPath: diskPath,
+        created: new Date().toISOString()
+      };
+      metadata.push(newFile);
+    }
+    
+    saveMetadata(username, metadata, config.storageDir, key);
+    logActivity(username, isOverwrite ? 'WebDAV-Datei-Überschreiben' : 'WebDAV-Datei-Upload', `Datei '${targetItem.name}' ${isOverwrite ? 'überschrieben' : 'hochgeladen'} über WebDAV`);
+    
+    res.status(isOverwrite ? 204 : 201).end();
+  } catch (err) {
+    console.error("WebDAV PUT Error:", err);
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch (_) {}
+    }
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// MOVE and COPY methods
+webdavRouter.all('*', async (req, res, next) => {
+  if (req.method !== 'MOVE' && req.method !== 'COPY') return next();
+  
+  const isMove = req.method === 'MOVE';
+  const prefix = req.baseUrl;
+  const srcDecodedPath = decodeURIComponent(req.path);
+  const destHeader = req.headers.destination;
+  
+  if (!destHeader) {
+    return res.status(400).send('Missing Destination header');
+  }
+  
+  const { username, key, config } = req.webdav;
+  const userStorageDir = getUserStorageDir(config.storageDir, username);
+  
+  try {
+    const destUrl = new URL(destHeader, `${req.protocol}://${req.headers.host}`);
+    let destDecodedPath = destUrl.pathname.substring(prefix.length);
+    if (!destDecodedPath.startsWith('/')) {
+      destDecodedPath = '/' + destDecodedPath;
+    }
+    destDecodedPath = decodeURIComponent(destDecodedPath);
+    
+    const metadata = loadMetadata(config.storageDir, username, key);
+    const srcItem = resolveWebdavPath(metadata, srcDecodedPath);
+    const destItem = resolveWebdavPath(metadata, destDecodedPath);
+    
+    if (!srcItem || !srcItem.exists) {
+      return res.status(404).send('Source Not Found');
+    }
+    
+    if (!destItem) {
+      return res.status(409).send('Conflict: Destination parent folder not found');
+    }
+    
+    const overwrite = req.headers.overwrite === 'T';
+    if (destItem.exists) {
+      if (!overwrite) {
+        return res.status(412).send('Precondition Failed: Destination already exists');
+      }
+      
+      if (destItem.type === 'dir') {
+        const childItems = getAllChildItemsRecursive(metadata, destItem.id);
+        for (const item of childItems) {
+          if (item.type === 'file') {
+            const filePath = path.join(userStorageDir, item.diskPath);
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          }
+        }
+        const childIds = childItems.map(c => c.id);
+        childIds.push(destItem.id);
+        const filteredMeta = metadata.filter(item => !childIds.includes(item.id));
+        metadata.length = 0;
+        metadata.push(...filteredMeta);
+      } else {
+        const filePath = path.join(userStorageDir, destItem.diskPath);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        const filteredMeta = metadata.filter(item => item.id !== destItem.id);
+        metadata.length = 0;
+        metadata.push(...filteredMeta);
+      }
+    }
+    
+    if (isMove) {
+      srcItem.parentId = destItem.parentId;
+      srcItem.name = destItem.name;
+      
+      logActivity(username, 'WebDAV-Verschieben', `'${srcItem.name}' verschoben zu '${destItem.name}' über WebDAV`);
+    } else {
+      // COPY Operation
+      if (srcItem.type === 'dir') {
+        const childItems = getAllChildItemsRecursive(metadata, srcItem.id);
+        const newTopDirId = crypto.randomUUID();
+        
+        metadata.push({
+          id: newTopDirId,
+          name: destItem.name,
+          type: 'dir',
+          parentId: destItem.parentId,
+          created: new Date().toISOString()
+        });
+        
+        const idMap = { [srcItem.id]: newTopDirId };
+        
+        for (const child of childItems) {
+          if (child.type === 'dir') {
+            idMap[child.id] = crypto.randomUUID();
+          }
+        }
+        
+        for (const child of childItems) {
+          const newParentId = idMap[child.parentId] || newTopDirId;
+          
+          if (child.type === 'dir') {
+            metadata.push({
+              id: idMap[child.id],
+              name: child.name,
+              type: 'dir',
+              parentId: newParentId,
+              created: new Date().toISOString()
+            });
+          } else {
+            const newFileId = crypto.randomUUID();
+            const newDiskPath = newFileId + '.enc';
+            const oldPath = path.join(userStorageDir, child.diskPath);
+            const newPath = path.join(userStorageDir, newDiskPath);
+            
+            if (fs.existsSync(oldPath)) {
+              fs.copyFileSync(oldPath, newPath);
+            }
+            
+            metadata.push({
+              id: newFileId,
+              name: child.name,
+              type: 'file',
+              parentId: newParentId,
+              size: child.size,
+              mimeType: child.mimeType,
+              diskPath: newDiskPath,
+              created: new Date().toISOString()
+            });
+          }
+        }
+      } else {
+        const newId = crypto.randomUUID();
+        const newDiskPath = newId + '.enc';
+        const oldPath = path.join(userStorageDir, srcItem.diskPath);
+        const newPath = path.join(userStorageDir, newDiskPath);
+        
+        if (fs.existsSync(oldPath)) {
+          fs.copyFileSync(oldPath, newPath);
+        }
+        
+        metadata.push({
+          id: newId,
+          name: destItem.name,
+          type: 'file',
+          parentId: destItem.parentId,
+          size: srcItem.size,
+          mimeType: srcItem.mimeType,
+          diskPath: newDiskPath,
+          created: new Date().toISOString()
+        });
+      }
+      
+      logActivity(username, 'WebDAV-Kopieren', `'${srcItem.name}' kopiert nach '${destItem.name}' über WebDAV`);
+    }
+    
+    saveMetadata(username, metadata, config.storageDir, key);
+    res.status(destItem.exists ? 204 : 201).end();
+  } catch (err) {
+    console.error(`WebDAV ${isMove ? 'MOVE' : 'COPY'} Error:`, err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.use('/webdav', webdavRouter);
+
 // Middleware: Authenticated & Key available
 function requireAuth(req, res, next) {
   if (!req.session.userId || !req.session.encryptionKey) {

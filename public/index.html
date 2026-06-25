@@ -379,6 +379,28 @@
                 Verknüpfung herunterladen
               </a>
             </div>
+
+            <!-- WebDAV Netzwerklaufwerk Karte (Neu) -->
+            <div class="glass-card" style="padding: 24px; margin-top: 24px; border: 1px solid var(--border-glass); border-radius: var(--radius-md);">
+              <h3 style="margin-bottom: 8px; font-size: 16px; font-weight: 600;">Netzwerklaufwerk (Windows Explorer / WebDAV)</h3>
+              <p class="subtitle" style="margin-bottom: 16px; font-size: 13px; line-height: 1.5; color: var(--text-muted);">
+                Verbinde deine Cloud als reguläres Laufwerk direkt im Windows Explorer oder macOS Finder. Bearbeite oder kopiere deine Dateien direkt wie auf einer lokalen Festplatte.
+              </p>
+              <div style="background: rgba(0,0,0,0.2); padding: 12px 16px; border-radius: 8px; font-family: monospace; font-size: 13px; border: 1px solid var(--border-glass); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; overflow-x: auto; white-space: nowrap;">
+                <span id="webdav-url-display" style="color: var(--accent-secondary); font-weight: bold;">Lade WebDAV URL...</span>
+                <button class="btn-primary" onclick="copyWebdavUrl()" style="width: auto; padding: 6px 12px; font-size: 11px; margin-left: 12px; flex-shrink: 0;">Kopieren</button>
+              </div>
+              <div style="font-size: 12px; line-height: 1.6; color: var(--text-muted);">
+                <strong>Anleitung zur Verbindung (Windows):</strong>
+                <ol style="margin: 6px 0 0 16px; padding: 0;">
+                  <li>Öffne <strong>Dieser PC</strong> im Windows Explorer.</li>
+                  <li>Klicke oben auf <strong>Netzlaufwerk verbinden</strong> (oder rechtem Mausklick auf "Dieser PC").</li>
+                  <li>Füge die oben kopierte URL in das Feld <em>Ordner</em> ein.</li>
+                  <li>Aktiviere das Kontrollkästchen <strong>Verbindung mit anderen Anmeldedaten herstellen</strong> und klicke auf <em>Fertig stellen</em>.</li>
+                  <li>Gib deinen normalen Cloud-Benutzernamen und dein Passwort ein.</li>
+                </ol>
+              </div>
+            </div>
           </div>
         </div>
 

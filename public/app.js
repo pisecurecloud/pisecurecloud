@@ -210,6 +210,8 @@ function switchTab(tabId) {
     loadSharesList();
   } else if (tabId === 'notes') {
     loadNotesList();
+  } else if (tabId === 'settings') {
+    updateWebdavUI();
   }
 }
 
@@ -1811,4 +1813,23 @@ async function restoreBackupFile(filename) {
 function escapeJS(str) {
   return str.replace(/'/g, "\\'");
 }
+
+// --- WEBDAV HELPERS ---
+function updateWebdavUI() {
+  const display = document.getElementById('webdav-url-display');
+  if (display) {
+    display.innerText = window.location.origin + '/webdav';
+  }
+}
+
+function copyWebdavUrl() {
+  const url = window.location.origin + '/webdav';
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('WebDAV-URL in die Zwischenablage kopiert!', 'success');
+  }).catch(err => {
+    console.error('Kopieren fehlgeschlagen:', err);
+    showToast('Kopieren fehlgeschlagen', 'error');
+  });
+}
+
 
