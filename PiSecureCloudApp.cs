@@ -690,6 +690,15 @@ namespace PiSecureCloudClient
 
         private static string ResolveBucketUrl(string bucketId)
         {
+            if (string.IsNullOrEmpty(bucketId)) return null;
+
+            // Falls der Benutzer direkt eine IP-Adresse oder URL eingibt (z. B. http://localhost:3000 oder http://192.168.1.100:3000)
+            if (bucketId.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                bucketId.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return bucketId.TrimEnd('/');
+            }
+
             try
             {
                 using (var client = new WebClient())
