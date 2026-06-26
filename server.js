@@ -2299,7 +2299,7 @@ app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => 
       type: 'file',
       parentId: targetParentId,
       size: req.file.size,
-      mimeType: req.file.mimetype || 'application/octet-stream',
+      mimeType: (req.file.mimetype && req.file.mimetype !== 'application/octet-stream') ? req.file.mimetype : getMimeType(req.file.originalname),
       diskPath: encryptedFileName,
       created: new Date().toISOString()
     };
@@ -2361,7 +2361,11 @@ app.get('/api/download/:id', requireAuth, (req, res) => {
 
     const chunkLen = endPlain - startPlain + 1;
 
-    res.setHeader('Content-Type', fileMeta.mimeType);
+    let mimeType = fileMeta.mimeType;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      mimeType = getMimeType(fileMeta.name);
+    }
+    res.setHeader('Content-Type', mimeType);
     res.setHeader('Accept-Ranges', 'bytes');
     
     if (range) {
@@ -3056,7 +3060,11 @@ app.get('/api/public/download/:id', (req, res) => {
 
     const chunkLen = endPlain - startPlain + 1;
 
-    res.setHeader('Content-Type', share.mimeType);
+    let mimeType = share.mimeType;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      mimeType = getMimeType(share.fileName);
+    }
+    res.setHeader('Content-Type', mimeType);
     res.setHeader('Accept-Ranges', 'bytes');
     
     if (range) {

@@ -24,6 +24,8 @@ import com.example.pisecurecloud.network.NetworkClient
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import android.content.Intent
+import androidx.core.content.FileProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,7 +146,35 @@ fun FilesScreen() {
                                         currentFolderName = item.name
                                         folderStack = folderStack + Pair(item.id, item.name)
                                     } else {
-                                        Toast.makeText(context, "Vorschau für '${item.name}' wird auf Android bald unterstützt.", Toast.LENGTH_SHORT).show()
+                                        scope.launch {
+                                            isLoading = true
+                                            val tempFile = File(context.cacheDir, item.name)
+                                            val downloadRes = NetworkClient.downloadFile(item.id, tempFile)
+                                            isLoading = false
+                                            if (downloadRes.isSuccess) {
+                                                try {
+                                                    val uri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "com.example.pisecurecloud.fileprovider",
+                                                        tempFile
+                                                    )
+                                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                        val resolvedMime = if (item.mimeType.isNullOrBlank() || item.mimeType == "application/octet-stream") {
+                                                            getMimeTypeFromFileName(item.name)
+                                                        } else {
+                                                            item.mimeType
+                                                        }
+                                                        setDataAndType(uri, resolvedMime)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Keine App zum Öffnen dieser Datei gefunden.", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Fehler beim Herunterladen: ${downloadRes.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(vertical = 12.dp, horizontal = 8.dp),
@@ -257,4 +287,19 @@ private fun formatFileSize(size: Long): String {
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
     val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
     return String.format("%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+}
+private fun getMimeTypeFromFileName(fileName: String): String {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "pdf" -> "application/pdf"
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "txt", "log" -> "text/plain"
+        "mp3" -> "audio/mpeg"
+        "mp4" -> "video/mp4"
+        "zip" -> "application/zip"
+        else -> "application/octet-stream"
+    }
 }

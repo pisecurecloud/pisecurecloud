@@ -265,4 +265,40 @@ object NetworkClient {
         }
         Result.failure(lastErr ?: Exception("Unknown error"))
     }
+
+    suspend fun downloadFile(fileId: String, outputFile: File): Result<Boolean> = withContext(Dispatchers.IO) {
+        var attempt = 1
+        var lastErr: Exception? = null
+        while (attempt <= 2) {
+            try {
+                val request = Request.Builder()
+                    .url("$baseUrl/api/download/$fileId")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.byteStream()?.use { inputStream ->
+                            outputFile.outputStream().use { outputStream ->
+                                inputStream.copyTo(outputStream)
+                            }
+                        }
+                        return@withContext Result.success(true)
+                    } else {
+                        val bodyStr = response.body?.string() ?: ""
+                        throw Exception("HTTP ${response.code}: $bodyStr")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Download file error (attempt $attempt)", e)
+                lastErr = e
+                if (attempt == 1 && autoHealUrlAndRetry()) {
+                    attempt++
+                } else {
+                    break
+                }
+            }
+        }
+        Result.failure(lastErr ?: Exception("Unknown error"))
+    }
 }
