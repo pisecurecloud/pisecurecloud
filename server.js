@@ -3571,6 +3571,18 @@ app.get('/api/download-shortcut', (req, res) => {
   res.send(htmlContent);
 });
 
+// Windows Desktop-App herunterladen
+app.get('/api/download-windows-app', (req, res) => {
+  const appPath = path.join(__dirname, 'PiSecureCloud.exe');
+  if (fs.existsSync(appPath)) {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="PiSecureCloud.exe"');
+    res.sendFile(appPath);
+  } else {
+    res.status(404).send('Windows-App wurde noch nicht auf dem Server kompiliert.');
+  }
+});
+
 // Tunnel Log Monitor Function
 function startTunnelMonitor() {
   const logPath = (process.platform === 'win32' || process.env.NODE_ENV === 'development')
